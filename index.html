@@ -195,7 +195,7 @@
             <h4 class="text-xs font-bold text-amber-400 uppercase tracking-widest">Konfigurasi API AI Studio</h4>
             <div class="space-y-2 bg-slate-950/50 p-3 rounded-xl border border-amber-900/20 mb-4">
               <label class="text-[10px] text-slate-400 block mb-1">HUGGING FACE API TOKEN (GRATIS)</label>
-              <input type="password" id="huggingFaceTokenInput" placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full bg-slate-950 border border-slate-900 focus:border-amber-500 outline-none rounded-xl p-2.5 text-xs text-slate-100 placeholder-slate-700 font-mono" onchange="saveHFToken(this.value)" />
+              <input type="password" id="huggingFaceTokenInput" placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" class="w-full bg-slate-950 border border-slate-900 focus:border-amber-500 outline-none rounded-xl p-2.5 text-xs text-slate-100 placeholder-slate-700 font-mono" oninput="saveHFToken(this.value)" onchange="saveHFToken(this.value)" />
               <p class="text-[9px] text-slate-500">Token ini digunakan otomatis untuk memproses render gambar & video milik Member/Publik tanpa membocorkannya ke mereka.</p>
             </div>
             <div class="h-px bg-slate-900 my-4"></div>
