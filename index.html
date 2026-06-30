@@ -964,11 +964,31 @@
         }
 
         const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-
-        imageProcessing.classList.add('hidden');
-        imageViewport.classList.remove('hidden');
-        imageViewport.src = imageUrl;
+        
+        // Convert Blob to Base64 to bypass strict browser blob URL policies
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = function() {
+          const base64data = reader.result;
+          imageProcessing.classList.add('hidden');
+          imageViewport.classList.remove('hidden');
+          imageViewport.src = base64data;
+          
+          // Update direct download link with Base64 data
+          const dnlBtn = document.querySelector("a[href='#'][onclick*='copyOutputLink(\'image\')']");
+          if (dnlBtn) {
+            dnlBtn.onclick = function(e) {
+              e.preventDefault();
+              const a = document.createElement('a');
+              a.href = base64data;
+              a.download = `abel_studio_${Date.now()}.png`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+            dnlBtn.textContent = "Download PNG";
+          }
+        };
         statusBadge.textContent = 'SUCCESS (REAL)';
         statusBadge.className = "text-[8px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-black tracking-widest uppercase animate-pulse";
         
