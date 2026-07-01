@@ -946,7 +946,7 @@
       }, 3000);
     }
 
-    async function generateImageOutputReal() {
+        async function generateImageOutputReal() {
       const imageLoader = document.getElementById('imageLoader');
       const imageProcessing = document.getElementById('imageProcessing');
       const imageViewport = document.getElementById('imageViewport');
@@ -957,6 +957,133 @@
         alert("Silakan tulis prompt deskripsi gambar terlebih dahulu!");
         return;
       }
+
+      imageLoader.classList.add('hidden');
+      imageProcessing.classList.remove('hidden');
+      imageViewport.classList.add('hidden');
+      statusBadge.textContent = 'RENDERING REAL...';
+
+      // Primary Model Selection
+      let hfModel = "black-forest-labs/FLUX.1-schnell";
+      if (window.imageEngine === 'gpt2') {
+        hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
+      } else if (window.imageEngine === 'seadream') {
+        hfModel = "Lykon/dreamshaper-xl-v2-turbo";
+      }
+
+      const hasReference = window.referenceImages && window.referenceImages.length > 0;
+      
+      // List of backup models in case primary is gated/sleeping/restricted
+      const backupModels = [
+        "Lykon/dreamshaper-xl-v2-turbo",
+        "stabilityai/stable-diffusion-2-1",
+        "runwayml/stable-diffusion-v1-5"
+      ];
+
+      async function tryFetchImage(modelName) {
+        let response;
+        if (hasReference) {
+          const refImage = window.referenceImages[0].preview;
+          const imageBlob = dataURLtoBlob(refImage);
+          
+          response = await fetch(`https://api-inference.huggingface.co/models/${modelName}`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${window.huggingFaceToken}`,
+              "X-Prompt": promptInput,
+              "Content-Type": imageBlob.type
+            },
+            body: imageBlob
+          });
+          
+          if (!response.ok) {
+            const base64Clean = refImage.split(',')[1];
+            response = await fetch(`https://api-inference.huggingface.co/models/${modelName}`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${window.huggingFaceToken}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                inputs: base64Clean,
+                parameters: {
+                  prompt: promptInput,
+                  strength: 0.6
+                }
+              })
+            });
+          }
+        } else {
+          response = await fetch(`https://api-inference.huggingface.co/models/${modelName}`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${window.huggingFaceToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ inputs: promptInput })
+          });
+        }
+        return response;
+      }
+
+      try {
+        let response = await tryFetchImage(hfModel);
+        
+        // If primary model fails (e.g. gated model error, 403, or service unavailable)
+        if (!response.ok) {
+          console.warn(`Primary model ${hfModel} failed. Trying backup models...`);
+          let success = false;
+          for (let i = 0; i < backupModels.length; i++) {
+            try {
+              statusBadge.textContent = `RETrying (Backup ${i+1})...`;
+              response = await tryFetchImage(backupModels[i]);
+              if (response.ok) {
+                success = true;
+                break;
+              }
+            } catch (e) {
+              console.error(`Backup ${backupModels[i]} failed:`, e);
+            }
+          }
+          if (!success) {
+            throw new Error("Semua server model AI sedang sibuk. Silakan coba lagi beberapa saat lagi.");
+          }
+        }
+
+        const blob = await response.blob();
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = function() {
+          const base64data = reader.result;
+          imageProcessing.classList.add('hidden');
+          imageViewport.classList.remove('hidden');
+          imageViewport.src = base64data;
+          
+          const dnlBtn = document.querySelector("a[href='#'][onclick*='copyOutputLink(\'image\')']");
+          if (dnlBtn) {
+            dnlBtn.onclick = function(e) {
+              e.preventDefault();
+              const a = document.createElement('a');
+              a.href = base64data;
+              a.download = `abel_studio_${Date.now()}.png`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+            dnlBtn.textContent = "Download PNG";
+          }
+        };
+        
+        statusBadge.textContent = hasReference ? 'REAL IMG2IMG SUCCESS' : 'SUCCESS (REAL)';
+        statusBadge.className = "text-[8px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-black tracking-widest uppercase animate-pulse";
+
+      } catch (error) {
+        console.error(error);
+        alert("Gagal merender gambar asli: " + error.message + "
+Menampilkan demo simulasi sebagai gantinya.");
+        generateImageOutputMock();
+      }
+    }
 
       imageLoader.classList.add('hidden');
       imageProcessing.classList.remove('hidden');
