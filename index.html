@@ -471,7 +471,7 @@
       }
 
       // Initialize defaults
-      setStudioMode('video');
+      switchEngineMode('video');
       setVideoEngine('veo');
       setImageEngine('seadream');
       renderActiveCodes();
@@ -630,72 +630,76 @@
     }
 
     // --- CONNECTION DIAGNOSTIC TEST ---
-    async function runTokenDiagnostic() {
-      const token = window.huggingFaceToken;
-      const diagResult = document.getElementById('diagResultBox');
-      const diagText = document.getElementById('diagResultText');
-
-      if (!token) {
-        diagResult.classList.remove('hidden');
-        diagResult.className = "p-3 rounded-xl bg-rose-950/40 border border-rose-900/30 text-xs text-rose-400";
-        diagText.textContent = "DIAGNOSTIK GAGAL: Hugging Face Token belum dimasukkan! Tulis token Anda di atas terlebih dahulu.";
-        return;
-      }
-
-      diagResult.classList.remove('hidden');
-      diagResult.className = "p-3 rounded-xl bg-blue-950/40 border border-blue-900/30 text-xs text-blue-400 animate-pulse";
-      diagText.textContent = "Sedang mengetes otentikasi token ke server Hugging Face...";
-
+    async function runDiagnostics() {
+      const statusDiv = document.getElementById('diagnosticStatus');
+      statusDiv.classList.remove('hidden');
+      statusDiv.innerHTML = "Memulai tes koneksi...";
+      statusDiv.className = "text-[10px] text-amber-400 mt-2 p-2 bg-slate-900/50 rounded-lg border border-slate-800";
+      
       try {
-        const res = await fetch("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ inputs: "test connection" })
-        });
-
-        if (res.status === 401) {
-          diagResult.className = "p-3 rounded-xl bg-rose-950/40 border border-rose-900/30 text-xs text-rose-400";
-          diagText.textContent = "DIAGNOSTIK GAGAL: Token tidak sah (Unauthorized - 401). Mohon periksa kembali token Hugging Face Anda.";
-        } else if (res.status === 403) {
-          diagResult.className = "p-3 rounded-xl bg-rose-950/40 border border-rose-900/30 text-xs text-rose-400";
-          diagText.textContent = "DIAGNOSTIK GAGAL: Token dibatasi atau ditolak (Forbidden - 403). Gunakan token tipe READ atau WRITE.";
-        } else {
-          diagResult.className = "p-3 rounded-xl bg-emerald-950/40 border border-emerald-900/30 text-xs text-emerald-400";
-          diagText.textContent = `DIAGNOSTIK SUKSES: Token terhubung sempurna! Response Code: ${res.status}. Server AI siap digunakan.`;
+        const pingRes = await fetch("https://huggingface.co/api/models/black-forest-labs/FLUX.1-schnell", { method: "GET" }).catch(e => null);
+        if (!pingRes) {
+          statusDiv.innerHTML = "❌ <b>KONEKSI DIBLOKIR:</b> Browser Anda tidak bisa terhubung ke Hugging Face.<br><br>Ini terjadi karena provider internet Anda (seperti IndiHome atau Telkomsel) memblokir alamat server AI luar ini. <br><br><b>Solusi:</b> Aktifkan VPN di komputer/HP Anda atau gunakan aplikasi gratis <b>Cloudflare WARP (1.1.1.1)</b>, lalu coba tes diagnostik ini lagi.";
+          statusDiv.className = "text-[10px] text-rose-400 mt-2 p-3 bg-rose-950/30 rounded-xl border border-rose-900/30 leading-relaxed";
+          return;
         }
-      } catch (err) {
-        diagResult.className = "p-3 rounded-xl bg-rose-950/40 border border-rose-900/30 text-xs text-rose-400";
-        diagText.textContent = "DIAGNOSTIK GAGAL: Kesalahan koneksi jaringan frontend. Server Hugging Face memblokir browser (" + err.message + "). Tenang, web ini akan menggunakan proxy penyeimbang otomatis saat render!";
+        
+        if (!window.huggingFaceToken) {
+          statusDiv.innerHTML = "⚠️ <b>KONEKSI OK</b>, tetapi kolom Token API Anda masih kosong. Silakan tempelkan token hf_ Anda terlebih dahulu.";
+          statusDiv.className = "text-[10px] text-amber-400 mt-2 p-3 bg-amber-950/30 rounded-xl border border-amber-900/30";
+          return;
+        }
+        
+        const tokenRes = await fetch("https://huggingface.co/api/whoami-v2", {
+          headers: { "Authorization": `Bearer ${window.huggingFaceToken}` }
+        });
+        
+        if (tokenRes.status === 401) {
+          statusDiv.innerHTML = "❌ <b>TOKEN SALAH/DITOLAK:</b> Server Hugging Face menolak token Anda (Error 401).<br><br><b>Penyebab:</b> Token belum diverifikasi lewat email pendaftaran Hugging Face Anda, atau ada karakter token yang terpotong saat disalin.<br><br><b>Solusi:</b> Buka email Anda, klik konfirmasi pendaftaran Hugging Face, buat token Classic (Read) baru, lalu pasang ulang.";
+          statusDiv.className = "text-[10px] text-rose-400 mt-2 p-3 bg-rose-950/30 rounded-xl border border-rose-900/30 leading-relaxed";
+          return;
+        }
+        
+        if (tokenRes.ok) {
+          const userData = await tokenRes.json();
+          statusDiv.innerHTML = `✅ <b>DIAGNOSTIK SUKSES!</b><br>• Koneksi Jaringan: LANCAR<br>• Akun HF: ${userData.username}<br>• Status Token: AKTIF & SIAP PAKAI!<br><br>Silakan tutup panel admin dan buat gambar sekarang!`;
+          statusDiv.className = "text-[10px] text-emerald-400 mt-2 p-3 bg-emerald-950/30 rounded-xl border border-emerald-900/30 leading-relaxed";
+        } else {
+          statusDiv.innerHTML = `⚠️ <b>KONEKSI OK</b>, tetapi status token tidak dikenal (Status: ${tokenRes.status}). Silakan tes buat gambar.`;
+          statusDiv.className = "text-[10px] text-amber-400 mt-2 p-3 bg-amber-950/30 rounded-xl border border-amber-900/30";
+        }
+      } catch(err) {
+        statusDiv.innerHTML = "❌ <b>ERROR JARINGAN:</b> " + err.message;
+        statusDiv.className = "text-[10px] text-rose-400 mt-2 p-3 bg-rose-950/30 rounded-xl border border-rose-900/30";
       }
     }
 
     // STUDIO NAVIGATION & UI LOGIC
-    function setStudioMode(mode) {
+    function switchEngineMode(mode) {
       window.studioMode = mode;
-      const tabVideo = document.getElementById('tabVideo');
-      const tabImage = document.getElementById('tabImage');
-      const controlVideo = document.getElementById('controlVideo');
-      const controlImage = document.getElementById('controlImage');
+      const btnVideo = document.getElementById('engineModeVideo');
+      const btnImage = document.getElementById('engineModeImage');
+      const groupVideo = document.getElementById('videoEngineGroup');
+      const groupImage = document.getElementById('imageEngineGroup');
       const previewVideo = document.getElementById('previewVideo');
       const previewImage = document.getElementById('previewImage');
 
       if (mode === 'video') {
-        tabVideo.className = "flex-1 py-3 text-center rounded-xl bg-purple-950 text-purple-400 border border-purple-800 text-xs font-black tracking-widest uppercase transition-premium";
-        tabImage.className = "flex-1 py-3 text-center rounded-xl hover:bg-slate-950/40 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-widest uppercase transition-premium";
-        controlVideo.classList.remove('hidden');
-        controlImage.classList.add('hidden');
+        btnVideo.className = "py-2.5 px-3 rounded-lg text-xs font-bold transition-premium flex items-center justify-center gap-1.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg";
+        btnImage.className = "py-2.5 px-3 rounded-lg text-xs font-bold transition-premium flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-100";
+        groupVideo.classList.remove('hidden');
+        groupImage.classList.add('hidden');
         previewVideo.classList.remove('hidden');
         previewImage.classList.add('hidden');
+        updateActiveBadge(window.videoEngine.toUpperCase());
       } else {
-        tabImage.className = "flex-1 py-3 text-center rounded-xl bg-amber-950 text-amber-400 border border-amber-800 text-xs font-black tracking-widest uppercase transition-premium";
-        tabVideo.className = "flex-1 py-3 text-center rounded-xl hover:bg-slate-950/40 text-slate-400 hover:text-slate-200 text-xs font-bold tracking-widest uppercase transition-premium";
-        controlImage.classList.remove('hidden');
-        controlVideo.classList.add('hidden');
-        previewImage.classList.remove('hidden');
+        btnVideo.className = "py-2.5 px-3 rounded-lg text-xs font-bold transition-premium flex items-center justify-center gap-1.5 text-slate-400 hover:text-slate-100";
+        btnImage.className = "py-2.5 px-3 rounded-lg text-xs font-bold transition-premium flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-pink-500 text-white shadow-lg";
+        groupVideo.classList.add('hidden');
+        groupImage.classList.remove('hidden');
         previewVideo.classList.add('hidden');
+        previewImage.classList.remove('hidden');
+        updateActiveBadge(window.imageEngine.toUpperCase());
       }
     }
 
@@ -704,7 +708,10 @@
       document.querySelectorAll('#videoEngineGroup .engine-selector-btn').forEach(btn => {
         btn.classList.remove('border-purple-500', 'bg-purple-950/30');
       });
-      document.getElementById(`btn-${engine}`).classList.add('border-purple-500', 'bg-purple-950/30');
+      const targetBtn = document.getElementById(`btn-${engine}`);
+      if (targetBtn) {
+        targetBtn.classList.add('border-purple-500', 'bg-purple-950/30');
+      }
       updateActiveBadge(engine.toUpperCase());
     }
 
@@ -713,7 +720,10 @@
       document.querySelectorAll('#imageEngineGroup .engine-selector-btn').forEach(btn => {
         btn.classList.remove('border-amber-500', 'bg-amber-950/30');
       });
-      document.getElementById(`btn-${engine}`).classList.add('border-amber-500', 'bg-amber-950/30');
+      const targetBtn = document.getElementById(`btn-${engine}`);
+      if (targetBtn) {
+        targetBtn.classList.add('border-amber-500', 'bg-amber-950/30');
+      }
       updateActiveBadge(engine.toUpperCase());
     }
 
@@ -722,6 +732,15 @@
       activeBadges.forEach(b => {
         b.textContent = text;
       });
+    }
+
+    function injectTag(tag) {
+      const input = document.getElementById('promptInput');
+      let text = input.value;
+      if (tag === 'cinema') text += ", cinematic slow motion, 8k raw quality";
+      if (tag === 'fluid') text += ", fluid physics, water motion simulation";
+      if (tag === 'luxury') text += ", extremely detailed, luxury studio lighting";
+      input.value = text;
     }
 
     // IMAGE UPLOADER & REFERENCE STATE
