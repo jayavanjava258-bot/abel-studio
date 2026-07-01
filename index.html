@@ -924,6 +924,16 @@
     }
 
     // --- REAL HUGGING FACE API GENERATION ---
+        // Helper to convert Base64 DataURL to Blob
+    function dataURLtoBlob(dataurl) {
+      var arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+          bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+      while(n--){
+          u8arr[n] = bstr.charCodeAt(n);
+      }
+      return new Blob([u8arr], {type:mime});
+    }
+
     async function generateImageOutputReal() {
       const imageLoader = document.getElementById('imageLoader');
       const imageProcessing = document.getElementById('imageProcessing');
@@ -935,6 +945,121 @@
         alert("Silakan tulis prompt deskripsi gambar terlebih dahulu!");
         return;
       }
+
+      imageLoader.classList.add('hidden');
+      imageProcessing.classList.remove('hidden');
+      imageViewport.classList.add('hidden');
+      statusBadge.textContent = 'RENDERING REAL...';
+
+      let hfModel = "black-forest-labs/FLUX.1-schnell"; // Default Text-to-Image
+      if (window.imageEngine === 'gpt2') {
+        hfModel = "stabilityai/stable-diffusion-xl-base-1.0";
+      } else if (window.imageEngine === 'seadream') {
+        hfModel = "Lykon/dreamshaper-xl-v2-turbo";
+      }
+
+      // Check if user has uploaded a reference image
+      const hasReference = window.referenceImages && window.referenceImages.length > 0;
+      
+      try {
+        let response;
+        
+        if (hasReference) {
+          statusBadge.textContent = 'IMG-TO-IMG RENDERING...';
+          const refImage = window.referenceImages[0].preview; // Get the first uploaded image
+          
+          // Image-to-image models on Hugging Face require the image as binary in the body,
+          // and parameters (like prompt, strength) passed via JSON or headers.
+          // The most universally supported serverless method for Image-to-Image is using SDXL or Dreamshaper:
+          const imageBlob = dataURLtoBlob(refImage);
+          
+          // We can use Lykon/dreamshaper-xl-v2-turbo for fast & beautiful image-to-image
+          const targetModel = "Lykon/dreamshaper-xl-v2-turbo";
+          
+          // To send BOTH image and prompt to HF serverless:
+          // We send a multipart form or a binary request with prompt in custom header or URL parameters.
+          // Alternatively, HF serverless accepts sending the binary image in body with prompt in headers:
+          response = await fetch(`https://api-inference.huggingface.co/models/${targetModel}`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${window.huggingFaceToken}`,
+              "X-Prompt": promptInput, // Passed in header for model interpretation
+              "Content-Type": imageBlob.type
+            },
+            body: imageBlob
+          });
+          
+          // Fallback if X-Prompt header is ignored by some providers:
+          if (!response.ok) {
+            // Let's try sending as standard JSON with base64 if supported
+            const base64Clean = refImage.split(',')[1];
+            response = await fetch(`https://api-inference.huggingface.co/models/${targetModel}`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${window.huggingFaceToken}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                inputs: base64Clean,
+                parameters: {
+                  prompt: promptInput,
+                  strength: 0.6
+                }
+              })
+            });
+          }
+        } else {
+          // Standard Text-to-Image
+          response = await fetch(`https://api-inference.huggingface.co/models/${hfModel}`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${window.huggingFaceToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ inputs: promptInput })
+          });
+        }
+
+        if (!response.ok) {
+          throw new Error(`API Error: ${response.status} - ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        
+        // Convert Blob to Base64 to bypass strict browser blob URL policies
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = function() {
+          const base64data = reader.result;
+          imageProcessing.classList.add('hidden');
+          imageViewport.classList.remove('hidden');
+          imageViewport.src = base64data;
+          
+          // Update direct download link with Base64 data
+          const dnlBtn = document.querySelector("a[href='#'][onclick*='copyOutputLink(\'image\')']");
+          if (dnlBtn) {
+            dnlBtn.onclick = function(e) {
+              e.preventDefault();
+              const a = document.createElement('a');
+              a.href = base64data;
+              a.download = `abel_studio_${Date.now()}.png`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            };
+            dnlBtn.textContent = "Download PNG";
+          }
+        };
+        
+        statusBadge.textContent = hasReference ? 'REAL IMG2IMG SUCCESS' : 'SUCCESS (REAL)';
+        statusBadge.className = "text-[8px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded font-black tracking-widest uppercase animate-pulse";
+
+      } catch (error) {
+        console.error(error);
+        alert("Gagal merender gambar asli: " + error.message);
+        generateImageOutputMock(); // Fallback to mock on fail
+      }
+    }
 
       imageLoader.classList.add('hidden');
       imageProcessing.classList.remove('hidden');
